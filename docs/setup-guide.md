@@ -1,4 +1,4 @@
-# Setup Guide
+# Setup Guide for Project
 
 Complete phase-by-phase setup from a fresh clone to a fully running FinOps dashboard.
 
