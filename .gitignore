@@ -1,0 +1,55 @@
+# Terraform
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars        # contains subscription IDs — never commit
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/tfplan
+terraform/*.tfplan
+terraform/crash.log
+terraform/override.tf
+terraform/override.tf.json
+terraform/*_override.tf
+terraform/*_override.tf.json
+
+# Python collector
+collector/venv/
+collector/__pycache__/
+collector/*.pyc
+collector/.env                    # contains secrets — never commit
+collector/.pytest_cache/
+collector/htmlcov/
+collector/.coverage
+
+# Next.js dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env.local              # contains secrets — never commit
+dashboard/.env.production
+dashboard/out/
+
+# Environment files (all variants)
+.env
+.env.*
+!.env.example
+!.env.local.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Secrets
+*.pem
+*.key
+*.p12
+secrets/

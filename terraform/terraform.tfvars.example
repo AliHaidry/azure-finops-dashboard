@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# azure-finops-dashboard · terraform.tfvars.example
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars — it is already in .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Azure subscription IDs to monitor for cost data
+# Add as many as you have — one per environment is the typical pattern
+subscription_ids = [
+  "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",   # Subscription A — Production
+  "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",   # Subscription B — Dev/Staging
+  "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"  # Subscription C — Sandbox
+]
+
+# Azure region — eastus2 is the cheapest for most resource types
+location = "eastus2"
+
+# Environment name — used in resource naming (dev / staging / prod)
+environment = "dev"
+
+# Your GitHub org and repo for OIDC federation (keyless auth)
+github_org  = "AliHaidry"
+github_repo = "azure-finops-dashboard"
+
+# PostgreSQL settings
+# B_Standard_B1ms = cheapest dev tier (~$13/month)
+# GP_Standard_D2s_v3 = general purpose for production (~$100/month)
+pg_admin_username = "finops_admin"
+pg_sku_name       = "B_Standard_B1ms"
+pg_storage_mb     = 32768   # 32 GB — enough for years of cost data
+pg_version        = "16"
+
+# App Service plan SKU for the Next.js dashboard
+# B1 = basic (~$13/month), S1 = standard with autoscale (~$70/month)
+app_service_sku = "B1"
+
+# Additional tags applied to all resources
+tags = {
+  project = "azure-finops-dashboard"
+  owner   = "ali.haidry"
+}
