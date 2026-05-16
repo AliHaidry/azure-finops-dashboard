@@ -36,8 +36,8 @@ resource "azurerm_linux_web_app" "main" {
     "NEXTAUTH_URL"                        = "https://finops-dashboard-${var.environment}.azurewebsites.net"
 
     # Secrets fetched from Key Vault at runtime
-    "DATABASE_URL"    = "@Microsoft.KeyVault(VaultName=finops-kv-${var.environment};SecretName=pg-connection-string)"
-    "API_KEY"         = "@Microsoft.KeyVault(VaultName=finops-kv-${var.environment};SecretName=dashboard-api-key)"
+    "DATABASE_URL"    = "@Microsoft.KeyVault(VaultName=finopskvali${var.environment};SecretName=pg-connection-string)"
+    "API_KEY"         = "@Microsoft.KeyVault(VaultName=finopskvali${var.environment};SecretName=dashboard-api-key)"
     "KEY_VAULT_URI"   = var.key_vault_uri
 
     # Generated at deploy time
@@ -61,16 +61,11 @@ resource "azurerm_linux_web_app" "main" {
 
 # Key Vault access policy for the App Service managed identity
 resource "azurerm_key_vault_access_policy" "webapp" {
-  key_vault_id = data.azurerm_key_vault.main.id
+  key_vault_id = var.key_vault_id
   tenant_id    = azurerm_linux_web_app.main.identity[0].tenant_id
   object_id    = azurerm_linux_web_app.main.identity[0].principal_id
 
   secret_permissions = ["Get", "List"]
-}
-
-data "azurerm_key_vault" "main" {
-  name                = "finops-kv-${var.environment}"
-  resource_group_name = var.resource_group_name
 }
 
 resource "random_password" "nextauth_secret" {

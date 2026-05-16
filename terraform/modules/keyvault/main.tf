@@ -1,5 +1,5 @@
 resource "azurerm_key_vault" "main" {
-  name                        = "finops-kv-${var.environment}"
+  name                        = "finopskvali${var.environment}"
   resource_group_name         = var.resource_group_name
   location                    = var.location
   tenant_id                   = var.tenant_id

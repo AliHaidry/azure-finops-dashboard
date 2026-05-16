@@ -7,4 +7,5 @@ variable "pg_connection_string" {
   type      = string
   sensitive = true
 }
+variable "key_vault_id"         { type = string }
 variable "tags"                 { type = map(string) }

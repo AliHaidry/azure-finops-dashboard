@@ -19,10 +19,10 @@ output "key_vault_uri" {
   value       = module.keyvault.vault_uri
 }
 
-output "app_service_url" {
-  description = "Next.js dashboard URL"
-  value       = module.webapp.app_url
-}
+# output "app_service_url" {
+#   description = "Next.js dashboard URL"
+#   value       = module.webapp.app_url
+# }
 
 output "acr_login_server" {
   description = "Azure Container Registry login server — add as GitHub secret ACR_LOGIN_SERVER"

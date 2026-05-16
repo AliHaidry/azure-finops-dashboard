@@ -98,17 +98,18 @@ module "registry" {
   tags                = azurerm_resource_group.main.tags
 }
 
-module "webapp" {
-  source = "./modules/webapp"
-
-  resource_group_name  = azurerm_resource_group.main.name
-  location             = azurerm_resource_group.main.location
-  environment          = var.environment
-  sku_name             = var.app_service_sku
-  key_vault_uri        = module.keyvault.vault_uri
-  pg_connection_string = module.database.connection_string
-  tags                 = azurerm_resource_group.main.tags
-}
+# module "webapp" {
+#   source = "./modules/webapp"
+#
+#   resource_group_name  = azurerm_resource_group.main.name
+#   location             = azurerm_resource_group.main.location
+#   environment          = var.environment
+#   sku_name             = var.app_service_sku
+#   key_vault_uri        = module.keyvault.vault_uri
+#   key_vault_id         = module.keyvault.vault_id
+#   pg_connection_string = module.database.connection_string
+#   tags                 = azurerm_resource_group.main.tags
+# }
 
 module "oidc" {
   source = "./modules/oidc"
