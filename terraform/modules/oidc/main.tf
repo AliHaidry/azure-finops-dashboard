@@ -51,24 +51,3 @@ resource "azuread_service_principal" "collector" {
 
 # Cost Management Reader on each subscription — set in main.tf via for_each
 # The principal_id is exported as collector_principal_id
-
-variable "github_org"        { type = string }
-variable "github_repo"       { type = string }
-variable "resource_group_id" { type = string }
-variable "acr_id"            { type = string }
-variable "subscription_ids"  { type = list(string) }
-
-output "github_client_id" {
-  description = "Client ID for GitHub Actions OIDC — add as AZURE_CLIENT_ID secret"
-  value       = azuread_application.github_actions.client_id
-}
-
-output "collector_principal_id" {
-  description = "Object ID of the collector service principal — used for Cost Management Reader role"
-  value       = azuread_service_principal.collector.object_id
-}
-
-output "collector_client_id" {
-  description = "Client ID for the cost collector service principal"
-  value       = azuread_application.collector.client_id
-}

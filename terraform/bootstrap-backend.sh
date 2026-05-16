@@ -12,7 +12,7 @@
 set -euo pipefail
 
 RESOURCE_GROUP="finops-tfstate-rg"
-STORAGE_ACCOUNT="finopstfstate"     # must be globally unique — change if taken
+STORAGE_ACCOUNT="finopstfstateali"     # must be globally unique — change if taken
 CONTAINER_NAME="tfstate"
 LOCATION="eastus2"
 

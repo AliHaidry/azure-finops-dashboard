@@ -38,20 +38,3 @@ resource "azurerm_key_vault_secret" "dashboard_api_key" {
     ignore_changes = [value]   # don't overwrite manual updates
   }
 }
-
-# Variables and outputs
-variable "resource_group_name"  { type = string }
-variable "location"             { type = string }
-variable "environment"          { type = string }
-variable "tenant_id"            { type = string }
-variable "object_id"            { type = string }
-variable "pg_connection_string" { type = string; sensitive = true }
-variable "tags"                 { type = map(string) }
-
-output "vault_uri" {
-  value = azurerm_key_vault.main.vault_uri
-}
-
-output "vault_id" {
-  value = azurerm_key_vault.main.id
-}

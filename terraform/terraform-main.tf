@@ -22,7 +22,7 @@ terraform {
 
   backend "azurerm" {
     resource_group_name  = "finops-tfstate-rg"
-    storage_account_name = "finopstfstate"       # must be globally unique — change if taken
+    storage_account_name = "finopstfstateali"       # must be globally unique — change if taken
     container_name       = "tfstate"
     key                  = "finops-dashboard.tfstate"
   }
