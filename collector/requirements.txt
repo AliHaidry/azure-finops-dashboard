@@ -5,7 +5,7 @@ azure-mgmt-resource==23.1.1
 azure-mgmt-subscription==3.1.1
 
 # Database
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.12
 
 # Metrics
 prometheus-client==0.20.0
