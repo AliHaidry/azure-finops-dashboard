@@ -33,6 +33,7 @@ dashboard/out/
 .env.*
 !.env.example
 !.env.local.example
+.env.example
 
 # OS
 .DS_Store
