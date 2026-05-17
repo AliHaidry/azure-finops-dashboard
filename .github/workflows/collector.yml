@@ -47,6 +47,14 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Start PostgreSQL server
+        run: |
+          az postgres flexible-server start \
+            --resource-group finops-rg-dev \
+            --name finops-pg-dev
+          echo "Waiting 60s for server to become ready..."
+          sleep 60
+
       - name: Run collector
         env:
           SUBSCRIPTION_IDS: ${{ secrets.SUBSCRIPTION_IDS }}
@@ -59,6 +67,13 @@ jobs:
           python collector.py \
             --backfill ${{ github.event.inputs.backfill_days || '1' }} \
             --no-prometheus
+
+      - name: Stop PostgreSQL server
+        if: always()
+        run: |
+          az postgres flexible-server stop \
+            --resource-group finops-rg-dev \
+            --name finops-pg-dev
 
       - name: Notify on failure
         if: failure()
