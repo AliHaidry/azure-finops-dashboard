@@ -589,3 +589,12 @@ if __name__ == "__main__":
         backfill_days=args.backfill,
         dry_run=args.dry_run,
     )
+
+    # Keep metrics server alive for Prometheus scraping
+    if not args.no_prometheus:
+        log.info("Metrics server running — press Ctrl+C to stop")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            log.info("Shutting down")
