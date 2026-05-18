@@ -1,0 +1,29 @@
+global:
+  scrape_interval:     1h        # cost data updates daily — no need for frequent scraping
+  evaluation_interval: 1h
+  external_labels:
+    monitor: 'finops-dashboard'
+
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+scrape_configs:
+
+  # Scrape the FinOps collector /metrics endpoint
+  - job_name: 'finops_collector'
+    static_configs:
+      - targets: ['host.docker.internal:8000']    # collector running on your local machine
+    scrape_interval: 15s
+    metrics_path: /metrics
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15m
+
+  # Grafana self-monitoring
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    scrape_interval: 15m

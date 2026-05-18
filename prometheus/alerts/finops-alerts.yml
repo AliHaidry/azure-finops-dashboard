@@ -1,0 +1,47 @@
+groups:
+  - name: finops.collector
+    rules:
+      - alert: CollectorDown
+        expr: time() - azure_collector_last_run_timestamp > 86400
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "FinOps collector has not run in 24 hours"
+          description: "Check GitHub Actions workflow."
+
+  - name: finops.budget
+    rules:
+      - alert: AzureBudgetWarning
+        expr: azure_budget_utilisation_percent > 80
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Team {{ $labels.team }} at {{ $value | humanize }}% of monthly budget"
+
+      - alert: AzureBudgetCritical
+        expr: azure_budget_utilisation_percent > 100
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Team {{ $labels.team }} has EXCEEDED monthly budget"
+
+  - name: finops.anomaly
+    rules:
+      - alert: AzureCostAnomaly
+        expr: azure_cost_anomaly_score > 2
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Unusual spend detected in {{ $labels.subscription_name }}"
+
+      - alert: AzureCostSpike
+        expr: azure_cost_anomaly_score > 3
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Cost spike in {{ $labels.subscription_name }} — review immediately"
