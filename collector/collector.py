@@ -173,9 +173,16 @@ def init_schema(conn):
 
 
 def upsert_records(conn, records: list[dict]):
-    """Upsert cost records — skip duplicates on (usage_date, resource_id, subscription_id)."""
+    """Upsert cost records — deduplicate before inserting."""
     if not records:
         return 0
+
+    # Deduplicate — keep last occurrence of each unique key
+    seen = {}
+    for r in records:
+        key = (str(r["usage_date"]), str(r["resource_id"]), str(r["subscription_id"]))
+        seen[key] = r
+    records = list(seen.values())
 
     rows = [
         (
