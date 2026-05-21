@@ -402,12 +402,8 @@ def update_prometheus_metrics(conn, subscription_name: str):
                 ON c.team = b.team
                 AND c.subscription_id = b.subscription_id
                 AND c.usage_date >= date_trunc('month', CURRENT_DATE)
-            WHERE b.subscription_id IN (
-                SELECT DISTINCT subscription_id FROM cost_records
-                WHERE subscription_name = %s
-            )
             GROUP BY b.team, b.monthly_limit_usd
-        """, (subscription_name,))
+        """)
         for row in cur.fetchall():
             team, limit, spent = row
             if limit and float(limit) > 0:
