@@ -1,349 +1,277 @@
-# Setup Guide for Project
+# Setup Guide
 
 Complete phase-by-phase setup from a fresh clone to a fully running FinOps dashboard.
 
-**Total time:** ~3-4 hours  
-**Prerequisites:** Azure subscription, GitHub account, tools listed in README
+**Total time:** ~4-5 hours  
+**Prerequisites:** Azure subscription (Pay-as-you-go), GitHub account, tools below
 
 ---
 
-## Phase 1 — Infrastructure provisioning (Terraform)
-
-### Step 1 — Login to Azure
+## Prerequisites check
 
 ```bash
-az login
-az account show --query name -o tsv
-# Verify the correct subscription is active
+az --version          # Azure CLI
+terraform --version   # >= 1.6
+python --version      # >= 3.12
+node --version        # >= 20
+docker --version      # Docker Desktop
+git --version
 ```
 
-### Step 2 — Configure Terraform variables
+---
+
+## Phase 1 — Infrastructure (Terraform)
+
+### Step 1 — Bootstrap remote state backend
+
+```bash
+chmod +x terraform/bootstrap-backend.sh
+./terraform/bootstrap-backend.sh
+# Creates: finops-tfstate-rg + finopstfstateali storage account
+```
+
+### Step 2 — Configure variables
 
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars
+code terraform.tfvars  # Fill in your values
 ```
 
-Edit `terraform.tfvars`:
-
 ```hcl
-# Azure
 subscription_ids = [
-  "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",  # Subscription A (Production)
-  "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",  # Subscription B (Dev/Staging)
-  "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz"  # Subscription C (Sandbox)
+  "24838f8a-cebe-4693-81d3-26d6b74b47cd",  # dev
+  "dd844520-0912-4407-b70b-53e40e499dfb",  # infra
+  "f99345eb-69a8-455e-82d7-25706b78ccaf",  # poc
 ]
 location    = "eastus2"
 environment = "dev"
-
-# GitHub OIDC
 github_org  = "AliHaidry"
 github_repo = "azure-finops-dashboard"
-
-# PostgreSQL
-pg_admin_username = "finops_admin"
-pg_sku_name       = "B_Standard_B1ms"  # cheapest tier for dev
-
-# App Service
-app_service_sku = "B1"
 ```
 
-### Step 3 — Initialise and apply
+### Step 3 — Deploy
 
 ```bash
 terraform init
-terraform plan -out=tfplan
-terraform apply tfplan
-# Takes approximately 10-15 minutes
+terraform plan
+terraform apply
+# ~10-15 minutes
 ```
 
 ### Step 4 — Save outputs
 
 ```bash
-terraform output -json > terraform-outputs.json
-
-# Individual values you will need later
-terraform output pg_connection_string   # → DATABASE_URL
-terraform output key_vault_uri          # → KEY_VAULT_URI
-terraform output acr_login_server       # → ACR_LOGIN_SERVER
-terraform output app_service_url        # → your dashboard URL
+terraform output github_secrets_summary
+# Configure the 7 GitHub secrets shown
+terraform output pg_connection_string
+# Save this for collector .env
 ```
 
-### Phase 1 — Definition of done
-
-- [ ] Resource group visible in Azure Portal
-- [ ] PostgreSQL server accessible (`psql $(terraform output pg_connection_string)`)
-- [ ] Key Vault created with correct access policies
-- [ ] App Service deployed and returning 200
+**Phase 1 creates:**
+- Resource group `finops-rg-dev`
+- PostgreSQL `finops-pg-dev.postgres.database.azure.com`
+- Key Vault `finopskvalidev`
+- Container Registry `finopsacralidev`
+- OIDC app registration + federated credentials
+- Cost Management Reader on all 3 subscriptions
 
 ---
 
-## Phase 2 — Python collector setup
+## Phase 2 — Python Collector
 
-### Step 1 — Configure environment
+### Step 1 — Install dependencies
 
 ```bash
 cd collector
-cp .env.example .env
+python -m venv venv
+source venv/Scripts/activate    # Windows Git Bash
+pip install -r requirements.txt --only-binary=:all:
 ```
 
-Edit `.env`:
+### Step 2 — Configure environment
 
 ```bash
-# Azure
-AZURE_TENANT_ID=your-tenant-id
-AZURE_CLIENT_ID=your-client-id        # from Terraform output
-SUBSCRIPTION_IDS=sub-a-id,sub-b-id,sub-c-id
+cp .env.example .env
+code .env
+```
 
-# Database
-DATABASE_URL=postgresql://finops_admin:password@hostname:5432/finops_db
-
-# Collection settings
-COLLECTION_START_DATE=2025-01-01      # how far back to backfill
+```bash
+SUBSCRIPTION_IDS=24838f8a...,dd844520...,f99345eb...
+DATABASE_URL=postgresql://finops_admin:PASSWORD@finops-pg-dev.postgres.database.azure.com:5432/finops_db?sslmode=require
 CURRENCY=USD
-COST_API_GRANULARITY=Daily
-
-# Prometheus
 PROMETHEUS_PORT=8000
-
-# Logging
 LOG_LEVEL=INFO
 ```
 
-### Step 2 — Install dependencies
+> Note: URL-encode special characters in password using `python -c "from urllib.parse import quote; print(quote('YOUR_PASS', safe=''))"`
+
+### Step 3 — Add local firewall rule
 
 ```bash
-python -m venv venv
-source venv/bin/activate              # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+az postgres flexible-server firewall-rule create \
+  --resource-group finops-rg-dev \
+  --name finops-pg-dev \
+  --rule-name AllowMyLocalIP \
+  --start-ip-address $(curl -4 -s icanhazip.com) \
+  --end-ip-address $(curl -4 -s icanhazip.com)
 ```
 
-### Step 3 — Initialise the database
+### Step 4 — Run collector
 
 ```bash
-python db/init_schema.py
-# Creates: cost_records, budgets, forecasts tables
+python collector.py --backfill 7
+# Verify: "Collection complete — N total records written"
+# Keep running: "Metrics server running — press Ctrl+C to stop"
 ```
 
-### Step 4 — Run a manual collection
+### Step 5 — Configure GitHub secrets
 
-```bash
-python collector.py --backfill 30     # fetch last 30 days
-# Expected output:
-# [INFO] Collecting from Subscription A (Production)...
-# [INFO]   → 847 records fetched
-# [INFO] Collecting from Subscription B (Dev/Staging)...
-# [INFO]   → 312 records fetched
-# [INFO] Collection complete. 1,159 records written to PostgreSQL.
-# [INFO] Prometheus metrics updated at :8000/metrics
-```
+Go to repo → Settings → Secrets → Actions → add:
 
-### Step 5 — Verify Prometheus metrics
-
-```bash
-curl http://localhost:8000/metrics | grep azure_cost
-# Expected:
-# azure_cost_daily_usd{subscription="Production"} 47.23
-# azure_cost_by_team_usd{team="platform"} 31.10
-# azure_budget_utilisation_percent{subscription="Production"} 62.5
-```
-
-### Step 6 — Set up scheduling
-
-**Option A — cron (Linux/macOS):**
-```bash
-crontab -e
-# Add: run daily at 06:00 UTC
-0 6 * * * /path/to/venv/bin/python /path/to/collector/collector.py >> /var/log/finops-collector.log 2>&1
-```
-
-**Option B — Azure Function (recommended for production):**
-```bash
-# Deploy the collector as an Azure Function with TimerTrigger
-cd collector/azure-function
-func azure functionapp publish finops-collector
-```
-
-### Phase 2 — Definition of done
-
-- [ ] `collector.py --backfill 30` completes without errors
-- [ ] PostgreSQL `cost_records` table has rows (`SELECT COUNT(*) FROM cost_records;`)
-- [ ] `curl localhost:8000/metrics` returns `azure_cost_*` metrics
-- [ ] Scheduled collection running (cron or Azure Function)
-
----
-
-## Phase 3 — Grafana dashboards
-
-### Step 1 — Add Prometheus data source
-
-1. Open Grafana → Settings → Data Sources → Add data source → Prometheus
-2. URL: `http://localhost:9090` (or your Prometheus host)
-3. Click **Save & Test** → green checkmark
-
-### Step 2 — Import dashboards
-
-1. Go to Dashboards → Import
-2. Upload each JSON file from `grafana/dashboards/`:
-
-| File | Dashboard name |
+| Secret | Value |
 |---|---|
-| `finops-overview.json` | FinOps Overview — all subscriptions |
-| `finops-by-team.json` | Cost by team tag |
-| `finops-budget-burn.json` | Budget burn rate |
-| `finops-anomaly.json` | Anomaly detection |
-
-### Step 3 — Configure alert rules
-
-```bash
-# Import alert rules
-curl -X POST http://admin:admin@localhost:3000/api/ruler/grafana/api/v1/rules \
-  -H "Content-Type: application/json" \
-  -d @grafana/alerts/finops-alerts.json
-```
-
-### Phase 3 — Definition of done
-
-- [ ] All 4 dashboards loading with live data
-- [ ] Budget burn rate gauge showing correct percentage
-- [ ] Anomaly detection panel showing last 30 days
-- [ ] Alert rules visible in Grafana Alerting
+| `AZURE_CLIENT_ID` | from `terraform output github_actions_client_id` |
+| `AZURE_TENANT_ID` | from `terraform output tenant_id` |
+| `AZURE_SUBSCRIPTION_ID` | your primary subscription ID |
+| `SUBSCRIPTION_IDS` | all 3 IDs comma-separated |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `ACR_LOGIN_SERVER` | from `terraform output acr_login_server` |
+| `ACR_NAME` | from `terraform output acr_name` |
 
 ---
 
-## Phase 4 — Next.js stakeholder dashboard
+## Phase 3 — Grafana + Prometheus
 
-### Step 1 — Configure environment
+### Step 1 — Start Docker stack
+
+```bash
+# Ensure Docker Desktop is running
+docker-compose up -d
+# Grafana:    http://localhost:3000 (admin / finops123)
+# Prometheus: http://localhost:9090
+```
+
+### Step 2 — Verify metrics
+
+```bash
+# Check collector is exposing metrics
+curl http://localhost:8000/metrics | grep azure_cost
+```
+
+### Step 3 — Seed budgets
+
+```bash
+cd collector
+python -c "
+import psycopg2, os
+from dotenv import load_dotenv
+load_dotenv()
+conn = psycopg2.connect(os.getenv('DATABASE_URL'))
+cur = conn.cursor()
+cur.execute('''
+INSERT INTO budgets (team, subscription_id, monthly_limit_usd)
+VALUES
+  ('finops-rg-dev', 'f99345eb-69a8-455e-82d7-25706b78ccaf', 5.00),
+  ('finops-tfstate-rg', 'f99345eb-69a8-455e-82d7-25706b78ccaf', 1.00)
+ON CONFLICT DO NOTHING;
+''')
+conn.commit()
+conn.close()
+print('Budgets seeded!')
+"
+```
+
+### Step 4 — Import Grafana dashboards
+
+1. Grafana → Dashboards → Import
+2. Upload JSON files from `grafana/dashboards/`
+3. Select Prometheus as data source
+
+---
+
+## Phase 4 — Next.js Dashboard
+
+### Step 1 — Install and configure
 
 ```bash
 cd dashboard
-cp .env.local.example .env.local
-```
-
-Edit `.env.local`:
-
-```bash
-DATABASE_URL=postgresql://finops_admin:password@hostname:5432/finops_db
-NEXTAUTH_SECRET=your-random-secret-here
-NEXTAUTH_URL=http://localhost:3000
-API_KEY=your-dashboard-api-key
-```
-
-### Step 2 — Install and run locally
-
-```bash
 npm install
+cp .env.local.example .env.local
+code .env.local
+# Add: DATABASE_URL=your-connection-string
+```
+
+### Step 2 — Run
+
+```bash
 npm run dev
-# Open http://localhost:3000
+# Open: http://localhost:3001
 ```
 
-### Step 3 — Deploy to Azure App Service
+### Step 3 — Verify
 
-```bash
-# GitHub Actions handles this automatically on push to main
-# Manual deploy:
-npm run build
-az webapp deploy \
-  --resource-group finops-rg \
-  --name finops-dashboard \
-  --src-path .next
-```
-
-### Step 4 — Configure budgets
-
-Set monthly budgets per team/subscription in the dashboard UI:
-1. Open dashboard → Settings → Budgets
-2. Add budget: Team `platform`, Amount `$500`, Subscription `Production`
-3. Repeat for each team
-
-Or seed via SQL:
-```sql
-INSERT INTO budgets (team, subscription_id, monthly_limit_usd, currency)
-VALUES
-  ('platform',  'sub-a-id', 500.00, 'USD'),
-  ('backend',   'sub-a-id', 300.00, 'USD'),
-  ('data',      'sub-b-id', 200.00, 'USD');
-```
-
-### Phase 4 — Definition of done
-
-- [ ] Dashboard loads at localhost:3000 (dev) or App Service URL (prod)
-- [ ] Cost by team cards showing correct data
-- [ ] Budget progress bars rendering
-- [ ] 30-day forecast chart visible
-- [ ] CSV export working
+- Total MTD Spend card shows data
+- Budget progress bars visible
+- Cost by Service donut chart rendering
+- Daily Spend Trend line chart showing dates
+- Service Breakdown table populated
+- CSV Export button downloads file
 
 ---
 
-## Phase 5 — Alerting
+## Daily operations
 
-### Step 1 — Configure Alertmanager
-
-```bash
-# Edit alertmanager/alertmanager.yml
-# Add your Slack webhook URL and email address
-# See docs/alerts.md for full configuration reference
-sudo systemctl restart alertmanager
-```
-
-### Step 2 — Add alert rules to Prometheus
+### Start everything for development
 
 ```bash
-sudo cp prometheus/alerts/finops-alerts.yml /etc/prometheus/alerts/
-# Add to prometheus.yml:
-# rule_files:
-#   - /etc/prometheus/alerts/*.yml
-sudo systemctl restart prometheus
+# Terminal 1 — start PostgreSQL
+az postgres flexible-server start --resource-group finops-rg-dev --name finops-pg-dev
+
+# Terminal 2 — run collector (keep open for Prometheus)
+cd collector && source venv/Scripts/activate
+python collector.py --backfill 1
+
+# Terminal 3 — start Docker
+docker-compose up -d
+
+# Terminal 4 — start dashboard
+cd dashboard && npm run dev
 ```
 
-### Step 3 — Test an alert
+### Stop everything
 
 ```bash
-# Temporarily lower a budget threshold to trigger a test alert
-# Or use Alertmanager's test endpoint:
-curl -X POST http://localhost:9093/api/v1/alerts \
-  -H "Content-Type: application/json" \
-  -d '[{"labels":{"alertname":"AzureBudgetWarning","team":"platform","severity":"warning"},"annotations":{"summary":"Test alert"}}]'
-# Check Slack channel for the test notification
+# Stop Docker
+docker-compose down
+
+# Stop PostgreSQL (saves ~$0.43/day)
+az postgres flexible-server stop --resource-group finops-rg-dev --name finops-pg-dev
 ```
-
-### Phase 5 — Definition of done
-
-- [ ] Alertmanager accessible at port 9093
-- [ ] Test alert received in Slack
-- [ ] Email alert received for critical severity
-- [ ] All alert rules visible in Prometheus → Alerts
 
 ---
 
-## Full verification checklist
+## Verification checklist
 
 ```
-Infrastructure
-  [ ] All Terraform resources created without errors
-  [ ] PostgreSQL accessible from collector host
-  [ ] Key Vault accessible with correct permissions
+Phase 1 — Infrastructure
+  [ ] terraform apply completes with 0 errors
+  [ ] PostgreSQL accessible from local machine
+  [ ] GitHub secrets all configured (7 secrets)
 
-Collector
-  [ ] Daily collection running on schedule
-  [ ] All 3 subscriptions being collected
-  [ ] Tag enrichment working (check cost_records.tags column)
-  [ ] Prometheus /metrics endpoint returning azure_cost_* metrics
+Phase 2 — Collector
+  [ ] python collector.py --backfill 7 writes records
+  [ ] GitHub Actions FinOps Collector workflow succeeds
+  [ ] localhost:8000/metrics shows azure_cost_* metrics
 
-Grafana
+Phase 3 — Grafana
   [ ] All 4 dashboards loading with live data
-  [ ] Anomaly detection panel populated
-  [ ] Budget burn rate showing correct %
+  [ ] Budget Utilisation gauge showing %
+  [ ] Prometheus targets showing finops_collector UP
 
-Dashboard
-  [ ] Next.js app accessible at production URL
-  [ ] All team cost cards showing data
-  [ ] Budget progress bars accurate
-  [ ] CSV export generates correct file
-
-Alerting
-  [ ] Alertmanager running
-  [ ] Slack integration working
-  [ ] Email integration working
-  [ ] Alert rules active in Prometheus
+Phase 4 — Dashboard
+  [ ] localhost:3001 loads without errors
+  [ ] All KPI cards showing values
+  [ ] Charts rendering correctly
+  [ ] CSV export working
 ```
