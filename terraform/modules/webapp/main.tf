@@ -1,7 +1,17 @@
+terraform {
+  required_providers {
+    azurerm = {
+      source                = "hashicorp/azurerm"
+      configuration_aliases = [azurerm.app]
+    }
+  }
+}
+
 resource "azurerm_service_plan" "main" {
+  provider = azurerm.app
   name                = "finops-asp-${var.environment}"
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = "eastus2"   # override to eastus2
   os_type             = "Linux"
   sku_name            = var.sku_name
 
@@ -20,7 +30,7 @@ resource "azurerm_linux_web_app" "main" {
   }
 
   site_config {
-    always_on        = false   # set true for production
+    always_on        = true    # supported on P0v3+
     http2_enabled    = true
     ftps_state       = "Disabled"
 

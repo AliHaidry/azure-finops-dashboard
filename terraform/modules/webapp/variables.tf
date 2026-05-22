@@ -1,7 +1,10 @@
 variable "resource_group_name"  { type = string }
 variable "location"             { type = string }
 variable "environment"          { type = string }
-variable "sku_name"             { type = string }
+variable "sku_name" {
+  type    = string
+  default = "P0v3"
+}
 variable "key_vault_uri"        { type = string }
 variable "pg_connection_string" {
   type      = string

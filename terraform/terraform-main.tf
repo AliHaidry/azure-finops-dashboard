@@ -40,7 +40,32 @@ provider "azurerm" {
   }
 }
 
+provider "azurerm" {
+  alias           = "app"
+  subscription_id = "5e1b8934-9a3f-4464-9089-2e7af92fa160"  # Azure subscription app
+  features {
+    key_vault {
+      purge_soft_delete_on_destroy    = true
+      recover_soft_deleted_key_vaults = true
+    }
+    resource_group {
+      prevent_deletion_if_contains_resources = false
+    }
+  }
+}
+
 provider "azuread" {}
+
+# ── Locals ───────────────────────────────────────────────────────────────────
+
+locals {
+  common_tags = {
+    project     = "azure-finops-dashboard"
+    environment = "dev"
+    managed_by  = "terraform"
+    owner       = "ali.haidry"
+  }
+}
 
 # ── Data sources ─────────────────────────────────────────────────────────────
 
@@ -100,6 +125,11 @@ module "registry" {
 
 # module "webapp" {
 #   source = "./modules/webapp"
+#
+#   providers = {
+#     azurerm     = azurerm
+#     azurerm.app = azurerm.app
+#   }
 #
 #   resource_group_name  = azurerm_resource_group.main.name
 #   location             = azurerm_resource_group.main.location

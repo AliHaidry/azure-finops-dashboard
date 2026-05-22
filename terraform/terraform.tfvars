@@ -3,6 +3,7 @@ subscription_ids = [
   "24838f8a-cebe-4693-81d3-26d6b74b47cd",  # Azure subscription dev
   "dd844520-0912-4407-b70b-53e40e499dfb",  # Azure subscription infra
   "f99345eb-69a8-455e-82d7-25706b78ccaf",  # Azure subscription poc
+  "5e1b8934-9a3f-4464-9089-2e7af92fa160",  # Azure subscription app
 ]
 
 location    = "eastus2"
