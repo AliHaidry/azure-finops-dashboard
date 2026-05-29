@@ -1,0 +1,44 @@
+groups:
+  - name: finops.budget
+    interval: 5m
+    rules:
+      - alert: BudgetExceeded
+        expr: finops_budget_utilisation > 1.0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Budget exceeded for {{ $labels.resource_group }}"
+          description: "{{ $labels.resource_group }} has exceeded its budget. Current utilisation: {{ $value | humanizePercentage }}"
+
+      - alert: BudgetWarning
+        expr: finops_budget_utilisation > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Budget warning for {{ $labels.resource_group }}"
+          description: "{{ $labels.resource_group }} is at {{ $value | humanizePercentage }} of budget."
+
+  - name: finops.anomaly
+    interval: 5m
+    rules:
+      - alert: CostSpike
+        expr: finops_daily_cost_usd > (avg_over_time(finops_daily_cost_usd[7d]) * 2)
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Cost spike detected in {{ $labels.subscription_id }}"
+          description: "Daily cost of ${{ $value }} is more than 2x the 7-day average."
+
+  - name: finops.collector
+    rules:
+      - alert: CollectorDown
+        expr: time() - finops_last_collection_timestamp > 86400
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "FinOps collector has not run in 24 hours"
+          description: "Last collection was {{ $value | humanizeDuration }} ago. Check GitHub Actions."
