@@ -48,7 +48,7 @@ def check_budget():
     cur.execute("""
         SELECT resource_group, SUM(cost_usd) as mtd_cost
         FROM cost_records
-        WHERE date >= date_trunc('month', CURRENT_DATE)
+        WHERE usage_date >= date_trunc('month', CURRENT_DATE)
         GROUP BY resource_group
     """)
     rows = cur.fetchall()
@@ -84,17 +84,17 @@ def check_cost_spike():
 
     cur.execute("""
         SELECT
-            COALESCE(SUM(CASE WHEN date = CURRENT_DATE - 1 THEN cost_usd END), 0) as yesterday,
+            COALESCE(SUM(CASE WHEN usage_date = CURRENT_DATE - 1 THEN cost_usd END), 0) as yesterday,
             COALESCE(AVG(daily_total), 0) as avg_7d
         FROM (
-            SELECT date, SUM(cost_usd) as daily_total
+            SELECT usage_date, SUM(cost_usd) as daily_total
             FROM cost_records
-            WHERE date >= CURRENT_DATE - 8 AND date < CURRENT_DATE - 1
-            GROUP BY date
+            WHERE usage_date >= CURRENT_DATE - 8 AND usage_date < CURRENT_DATE - 1
+            GROUP BY usage_date
         ) daily
         CROSS JOIN (
             SELECT SUM(cost_usd) as yesterday_total
-            FROM cost_records WHERE date = CURRENT_DATE - 1
+            FROM cost_records WHERE usage_date = CURRENT_DATE - 1
         ) yd
     """)
     row = cur.fetchone()
@@ -121,7 +121,7 @@ def check_collector_health():
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("SELECT MAX(date) FROM cost_records")
+    cur.execute("SELECT MAX(usage_date) FROM cost_records")
     row = cur.fetchone()
     cur.close()
     conn.close()

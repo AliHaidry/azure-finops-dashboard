@@ -49,10 +49,3 @@ jobs:
           BUDGET_CRITICAL_THRESHOLD: '1.00'
           SPIKE_MULTIPLIER: '2.0'
         run: python scripts/alert_check.py
-
-      - name: Stop PostgreSQL
-        if: always()
-        run: |
-          az postgres flexible-server stop \
-            --resource-group finops-rg-dev \
-            --name finops-pg-dev || true
