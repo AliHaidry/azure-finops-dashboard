@@ -198,7 +198,7 @@ export default function Dashboard() {
                   paddingAngle={3}
                   labelLine={false}
                   label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                    if (percent < 0.05) return null
+                    if (!percent || percent < 0.05) return null
                     const RADIAN = Math.PI / 180
                     const radius = innerRadius + (outerRadius - innerRadius) * 0.5
                     const x = cx + radius * Math.cos(-midAngle * RADIAN)
