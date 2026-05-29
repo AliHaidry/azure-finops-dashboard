@@ -51,7 +51,7 @@ jobs:
         run: |
           az postgres flexible-server start \
             --resource-group finops-rg-dev \
-            --name finops-pg-dev
+            --name finops-pg-dev || true
           echo "Waiting 60s for server to become ready..."
           sleep 60
 
