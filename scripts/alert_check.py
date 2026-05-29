@@ -59,7 +59,7 @@ def check_budget():
         budget = BUDGETS.get(resource_group)
         if not budget:
             continue
-        utilisation = mtd_cost / budget
+        utilisation = float(mtd_cost) / budget
         print(f"{resource_group}: ${mtd_cost:.3f} / ${budget:.2f} = {utilisation:.1%}")
 
         if utilisation >= BUDGET_CRITICAL:
@@ -104,7 +104,7 @@ def check_cost_spike():
     if not row:
         return
 
-    yesterday, avg_7d = row
+    yesterday, avg_7d = float(row[0]), float(row[1])
     if avg_7d > 0 and yesterday > avg_7d * SPIKE_MULTIPLIER:
         send_slack(
             f"Cost spike detected!\n"
