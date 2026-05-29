@@ -15,6 +15,7 @@ jobs:
   build-and-deploy:
     name: Build and Deploy Next.js Dashboard
     runs-on: ubuntu-latest
+    environment: app
 
     steps:
       - name: Checkout
