@@ -81,29 +81,31 @@ def check_cost_spike():
     print("Checking for cost spikes...")
     conn = get_connection()
     cur = conn.cursor()
-
     cur.execute("""
         SELECT
-            COALESCE(SUM(CASE WHEN usage_date = CURRENT_DATE - 1 THEN cost_usd END), 0) as yesterday,
-            COALESCE(AVG(daily_total), 0) as avg_7d
+            COALESCE(yesterday.total, 0),
+            COALESCE(avg_7d.avg, 0)
         FROM (
-            SELECT usage_date, SUM(cost_usd) as daily_total
+            SELECT SUM(cost_usd) as total
             FROM cost_records
-            WHERE usage_date >= CURRENT_DATE - 8 AND usage_date < CURRENT_DATE - 1
-            GROUP BY usage_date
-        ) daily
+            WHERE usage_date = CURRENT_DATE - 1
+        ) yesterday
         CROSS JOIN (
-            SELECT SUM(cost_usd) as yesterday_total
-            FROM cost_records WHERE usage_date = CURRENT_DATE - 1
-        ) yd
+            SELECT AVG(daily_total) as avg
+            FROM (
+                SELECT usage_date, SUM(cost_usd) as daily_total
+                FROM cost_records
+                WHERE usage_date >= CURRENT_DATE - 8
+                  AND usage_date < CURRENT_DATE - 1
+                GROUP BY usage_date
+            ) daily
+        ) avg_7d
     """)
     row = cur.fetchone()
     cur.close()
     conn.close()
-
     if not row:
         return
-
     yesterday, avg_7d = float(row[0]), float(row[1])
     if avg_7d > 0 and yesterday > avg_7d * SPIKE_MULTIPLIER:
         send_slack(
