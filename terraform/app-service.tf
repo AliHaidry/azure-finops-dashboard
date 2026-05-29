@@ -4,7 +4,7 @@
 resource "azurerm_resource_group" "app" {
   provider = azurerm.app
   name     = "finops-app-rg"
-  location = "eastus2"
+  location = "westus2"
   tags     = local.common_tags
 }
 
