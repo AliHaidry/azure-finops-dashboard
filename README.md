@@ -1,211 +1,511 @@
-# azure-finops-dashboard
+# Azure FinOps Dashboard
 
-![Azure](https://img.shields.io/badge/Azure-0078D4?style=flat&logo=microsoftazure&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
-![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat&logo=terraform&logoColor=white)
-![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=grafana&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)
-![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat&logo=prometheus&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
-![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+> Production-grade multi-subscription Azure cost monitoring system — Python collector, PostgreSQL, Grafana, Next.js stakeholder UI, and automated Slack alerting via GitHub Actions.
 
-A production-grade, multi-subscription Azure FinOps dashboard — combining a Python cost collector, PostgreSQL historical storage, Prometheus real-time metrics, Grafana ops dashboards, and a Next.js stakeholder web UI with budget alerting.
+[![FinOps Collector](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/collector.yml/badge.svg)](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/collector.yml)
+[![Deploy Dashboard](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/dashboard-deploy.yml/badge.svg)](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/dashboard-deploy.yml)
+[![FinOps Cost Alerts](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/finops-alerts.yml/badge.svg)](https://github.com/AliHaidry/azure-finops-dashboard/actions/workflows/finops-alerts.yml)
 
-> Built by [Syed Muhammad Ali Haidry](https://alihaidry-devops.website) — Senior DevOps Engineer
-
----
-
-## What this project does
-
-- Pulls daily cost data from **3 Azure subscriptions** via the Cost Management API
-- Enriches spend with **resource tags** (team, environment, owner, project)
-- Stores history in **PostgreSQL** for trend analysis and 30-day forecasting
-- Exposes real-time cost metrics to **Prometheus**
-- Visualises spend in **4 Grafana dashboards** (overview, budget, teams, anomaly)
-- Serves a **Next.js stakeholder dashboard** with budget progress bars and CSV export
-- Runs **fully automated** via GitHub Actions — daily OIDC keyless collection
+**Built by:** [Syed Muhammad Ali Haidry](https://alihaidry-devops.website) · Senior DevOps Engineer  
+**Blog post:** [Building a Multi-Subscription Azure FinOps Dashboard](https://alihaidry-devops.website/blog/azure-finops-dashboard)  
+**Live dashboard:** ~~finops-dashboard-app.azurewebsites.net~~ *(torn down — redeploy with `terraform apply`)*
 
 ---
 
 ## Architecture
 
 ```
-Azure Subscriptions (dev · infra · poc)
-         │  Cost Management API
-         ▼
-   Python Collector — GitHub Actions 06:00 UTC
-   OIDC auth · tag enrichment · deduplication
-         │
-    ┌────┴────────────┐
-    │   PostgreSQL     │   Historical records · budgets
-    └────┬────────────┘
-         │
-    ┌────┴──────────────────────┐
-    │       Prometheus           │   azure_cost_daily_usd
-    │       :8000/metrics        │   azure_budget_utilisation_%
-    └────┬──────────────────────┘
-         │
-    ┌────┴──────────┐    ┌──────────────────────┐
-    │    Grafana     │    │  Next.js Dashboard    │
-    │  4 dashboards  │    │  Budget · Forecast    │
-    └────┬──────────┘    │  CSV export           │
-         │               └──────────────────────┘
-    ┌────┴──────────┐
-    │  Alertmanager  │   Slack · Email alerts
-    └───────────────┘
+Azure Cost Management API (4 subscriptions)
+        ↓
+Python Collector — GitHub Actions daily at 06:00 UTC
+        ↓
+PostgreSQL Flexible Server (finops-pg-dev)
+        ↓
+        ├── Prometheus + Grafana     ← ops team (4 dashboards)
+        └── Next.js Dashboard       ← stakeholders (Azure App Service)
+                ↓
+GitHub Actions Alert Checks — every 6 hours
+                ↓
+Slack #finops-alerts
 ```
 
-→ Full architecture: [docs/architecture.md](docs/architecture.md)
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Infrastructure | Terraform + Azure Storage remote state |
+| Auth | OIDC federation — zero stored secrets |
+| Collection | Python 3.12 + azure-mgmt-costmanagement |
+| Storage | PostgreSQL 16 Flexible Server |
+| Ops dashboards | Prometheus + Grafana (Docker) |
+| Stakeholder UI | Next.js 16 on Azure App Service B1 |
+| Alerting | GitHub Actions + Slack Incoming Webhook |
+| Secrets | Azure Key Vault |
 
 ---
 
-## Tech stack
-
-| Layer | Tool | Purpose |
-|---|---|---|
-| IaC | Terraform | All Azure resources |
-| Data source | Azure Cost Management API | Multi-subscription cost data |
-| Collector | Python 3.12 | Fetch · enrich · normalise |
-| Store | PostgreSQL 16 | Cost history · budgets · forecasts |
-| Metrics | Prometheus | Real-time cost gauges |
-| Alerting | Alertmanager | Budget breach → Slack / email |
-| Ops UI | Grafana | 4 dashboards |
-| Stakeholder UI | Next.js 16 | Budget progress · forecast · CSV |
-| CI/CD | GitHub Actions + OIDC | Daily collection · keyless auth |
-| Secrets | Azure Key Vault | No hardcoded credentials |
-| Containers | Docker Compose | Local Prometheus + Grafana |
-
----
-
-## Project structure
+## Repository Structure
 
 ```
 azure-finops-dashboard/
-├── .github/workflows/collector.yml   ← Daily 06:00 UTC
-├── collector/
-│   ├── collector.py                  ← Cost collector
-│   ├── requirements.txt
-│   └── .env.example
-├── dashboard/                        ← Next.js UI
+├── terraform/                    # All infrastructure as code
+│   ├── terraform-main.tf         # Root module — providers, resource group
+│   ├── app-service.tf            # App Service Plan + Web App (app subscription)
+│   ├── database.tf               # PostgreSQL Flexible Server
+│   ├── keyvault.tf               # Key Vault + secrets
+│   ├── registry.tf               # Container Registry
+│   ├── terraform.tfvars          # Your values (gitignored)
+│   ├── terraform.tfvars.example  # Template — copy and fill in
+│   └── modules/
+│       ├── database/             # PostgreSQL module
+│       ├── keyvault/             # Key Vault module
+│       ├── registry/             # ACR module
+│       ├── webapp/               # App Service module
+│       └── oidc/                 # GitHub OIDC federation module
+├── collector/                    # Python cost collector
+│   ├── collector.py              # Main collection script
+│   ├── requirements.txt          # Python dependencies
+│   └── .env.example              # Environment template
+├── dashboard/                    # Next.js stakeholder UI
 │   ├── app/
-│   │   ├── page.tsx
-│   │   └── api/costs · export
-│   └── lib/db.ts
-├── docs/                             ← Full documentation
-├── grafana/
-│   ├── dashboards/                   ← JSON exports
-│   └── provisioning/datasources/
+│   │   ├── page.tsx              # Main dashboard page
+│   │   └── api/costs/route.ts    # PostgreSQL API route
+│   ├── package.json
+│   └── next.config.js
 ├── prometheus/
-│   ├── prometheus.yml
-│   └── alerts/finops-alerts.yml
-├── terraform/                        ← IaC
-│   ├── main.tf · variables.tf · outputs.tf
-│   ├── bootstrap-backend.sh
-│   └── modules/database · keyvault · registry · webapp · oidc
-├── docker-compose.yml
-├── CHANGELOG.md
-└── README.md
+│   ├── prometheus.yml            # Prometheus scrape config
+│   └── alerts.yml                # Alert rules (budget, spike, health)
+├── alertmanager/
+│   └── alertmanager.yml          # Alertmanager config (Slack routing)
+├── grafana/
+│   ├── dashboards/               # 4 Grafana dashboard JSON files
+│   └── provisioning/
+│       └── datasources/
+│           └── prometheus.yml    # Auto-provisioned Prometheus datasource
+├── scripts/
+│   └── alert_check.py            # GitHub Actions alert checker
+├── .github/
+│   └── workflows/
+│       ├── collector.yml         # Daily cost collection
+│       ├── dashboard-deploy.yml  # Next.js deploy to App Service
+│       └── finops-alerts.yml     # 6-hourly Slack alerts
+└── docker-compose.yml            # Prometheus + Grafana + Alertmanager
 ```
 
 ---
 
-## Quick start
+## Prerequisites
 
-### Prerequisites
-- Azure CLI · Terraform ≥ 1.6 · Python 3.12+ · Node.js 20+ · Docker Desktop
+- Azure account with at least one active subscription
+- Azure CLI installed and logged in (`az login`)
+- Terraform >= 1.5 installed
+- Python 3.12+
+- Node.js 20 LTS
+- Docker Desktop (for Grafana/Prometheus locally)
+- GitHub account (for Actions CI/CD)
+- Slack workspace with Incoming Webhooks enabled
 
-### 1 — Infrastructure
+---
+
+## Quick Start — Full Deployment
+
+### Step 1 — Bootstrap Terraform Remote State
+
+Create the storage account for Terraform state in your infra subscription:
+
 ```bash
-./terraform/bootstrap-backend.sh
-cd terraform && cp terraform.tfvars.example terraform.tfvars
-terraform init && terraform apply
+# Create resource group for tfstate
+az group create \
+  --name finops-tfstate-rg \
+  --location eastus2 \
+  --subscription <your-infra-subscription-id>
+
+# Create storage account
+az storage account create \
+  --name finopstfstateali \
+  --resource-group finops-tfstate-rg \
+  --location eastus2 \
+  --sku Standard_LRS \
+  --subscription <your-infra-subscription-id>
+
+# Create state container
+az storage container create \
+  --name tfstate \
+  --account-name finopstfstateali
 ```
 
-### 2 — Collector
+### Step 2 — Configure Terraform Variables
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+```
+
+Edit `terraform.tfvars` with your values:
+
+```hcl
+# terraform/terraform.tfvars
+subscription_ids = [
+  "your-dev-subscription-id",
+  "your-infra-subscription-id",
+  "your-poc-subscription-id",
+  "your-app-subscription-id",
+]
+
+poc_subscription_id  = "your-poc-subscription-id"
+app_subscription_id  = "your-app-subscription-id"
+
+github_org  = "YourGitHubUsername"
+github_repo = "azure-finops-dashboard"
+
+location    = "eastus2"
+environment = "dev"
+```
+
+### Step 3 — Deploy Infrastructure
+
+```bash
+cd terraform
+
+# Initialise with remote state
+terraform init
+
+# Preview what will be created
+terraform plan -var-file=terraform.tfvars
+
+# Deploy — takes ~5-10 minutes
+terraform apply -var-file=terraform.tfvars
+```
+
+**Resources created:**
+- PostgreSQL Flexible Server (`finops-pg-dev`)
+- Azure Key Vault (`finopskvalidev`) with pg connection string
+- Container Registry (`finopsacralidev`)
+- App Service Plan + Web App (`finops-dashboard-app`)
+- OIDC App Registration (`finops-github-actions`) with federated credentials
+
+### Step 4 — Grant Cost Management Reader on All Subscriptions
+
+The SP needs Cost Management Reader at subscription scope to query costs:
+
+```bash
+# Get the SP object ID from terraform output
+SP_OBJECT_ID=$(terraform output -raw github_actions_sp_object_id)
+
+# Assign to each subscription via Portal (more reliable cross-subscription):
+# portal.azure.com → Subscriptions → [each sub]
+# → Access control (IAM) → Add role assignment
+# → Cost Management Reader → finops-github-actions
+```
+
+Or via CLI for each subscription:
+```bash
+az role assignment create \
+  --assignee-object-id <SP_OBJECT_ID> \
+  --assignee-principal-type ServicePrincipal \
+  --role "Cost Management Reader" \
+  --scope "/subscriptions/<subscription-id>"
+```
+
+### Step 5 — Configure GitHub Secrets
+
+Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret:
+
+| Secret Name | Value | How to get it |
+|---|---|---|
+| `AZURE_CLIENT_ID` | App registration client ID | `terraform output github_actions_client_id` |
+| `AZURE_TENANT_ID` | Azure AD tenant ID | `terraform output tenant_id` |
+| `AZURE_SUBSCRIPTION_ID` | Subscription where PostgreSQL lives | Your poc subscription ID |
+| `AZURE_APP_SUBSCRIPTION_ID` | Subscription where App Service lives | Your app subscription ID |
+| `DATABASE_URL` | PostgreSQL connection string | `terraform output pg_connection_string` |
+| `NEXTAUTH_SECRET` | Random secret | `openssl rand -base64 32` |
+| `ACR_LOGIN_SERVER` | ACR URL | `terraform output acr_login_server` |
+| `SLACK_WEBHOOK_URL` | Slack incoming webhook | Create at api.slack.com/apps |
+| `SUBSCRIPTION_IDS` | JSON array of all sub IDs | `'["sub-a","sub-b","sub-c","sub-d"]'` |
+
+> **Important:** Also create a GitHub Environment named `app` (repo → Settings → Environments → New environment → `app`). The deploy workflow uses `environment: app` for OIDC scoping.
+
+### Step 6 — Run Initial Data Collection
+
+```bash
+# Trigger manually first time
+# GitHub → Actions → FinOps Collector → Run workflow
+```
+
+Or run locally:
 ```bash
 cd collector
-python -m venv venv && source venv/Scripts/activate
-pip install -r requirements.txt --only-binary=:all:
-cp .env.example .env  # Add DATABASE_URL from terraform output
-python collector.py --backfill 7
+python -m venv venv
+source venv/Scripts/activate  # Windows
+# source venv/bin/activate    # Mac/Linux
+
+pip install -r requirements.txt
+
+export DATABASE_URL="postgresql://finops_admin:<password>@finops-pg-dev.postgres.database.azure.com:5432/finops_db?sslmode=require"
+
+# Backfill last 30 days
+python collector.py --backfill 30
 ```
 
-### 3 — Grafana + Prometheus
+### Step 7 — Start Grafana Dashboards Locally
+
 ```bash
+# From repo root
 docker-compose up -d
-# Grafana: http://localhost:3000 (admin / finops123)
+
+# Verify containers running
+docker-compose ps
 ```
 
-### 4 — Stakeholder dashboard
+Open:
+- **Grafana:** http://localhost:3000 (admin / finops123)
+- **Prometheus:** http://localhost:9090
+- **Alertmanager:** http://localhost:9093
+
+Import the dashboard JSON files from `grafana/dashboards/` into Grafana.
+
+### Step 8 — Deploy Next.js Dashboard
+
+The dashboard deploys automatically on push to `main` when files in `dashboard/` change. To trigger manually:
+
 ```bash
-cd dashboard && npm install
-cp .env.local.example .env.local  # Add DATABASE_URL
+# GitHub → Actions → Deploy Dashboard to Azure App Service → Run workflow
+```
+
+Or deploy locally for development:
+```bash
+cd dashboard
+npm install
 npm run dev
-# Open: http://localhost:3001
+# Open http://localhost:3000
 ```
 
-→ Full guide: [docs/setup-guide.md](docs/setup-guide.md)
+### Step 9 — Enable Slack Alerting
+
+```bash
+# GitHub → Actions → FinOps Cost Alerts → Run workflow
+# Check your Slack #finops-alerts channel for test alerts
+```
+
+The alert workflow runs automatically every 6 hours. Alerts fire when:
+- Budget utilisation > 80% (warning)
+- Budget utilisation > 100% (critical)
+- Yesterday's spend > 2x 7-day average (warning)
+- No data collected in > 24 hours (critical)
 
 ---
 
-## GitHub Actions pipeline
+## Local Development
 
-```
-Schedule 06:00 UTC → OIDC auth → Start PostgreSQL
-→ Collect 3 subscriptions → Write DB → Stop PostgreSQL
+### Collector
+
+```bash
+cd collector
+python -m venv venv
+source venv/Scripts/activate
+
+pip install -r requirements.txt
+
+# Copy and fill in environment file
+cp .env.example .env
+
+# Run with backfill
+python collector.py --backfill 7
+
+# Run single day
+python collector.py
+
+# Check metrics endpoint
+curl http://localhost:8000/metrics
 ```
 
-**Required secrets:** `AZURE_CLIENT_ID` · `AZURE_TENANT_ID` · `AZURE_SUBSCRIPTION_ID` · `SUBSCRIPTION_IDS` · `DATABASE_URL` · `ACR_LOGIN_SERVER` · `ACR_NAME`
+### Next.js Dashboard
+
+```bash
+cd dashboard
+npm install
+
+# Copy environment file
+cp .env.example .env.local
+# Set DATABASE_URL in .env.local
+
+npm run dev
+# Open http://localhost:3000
+```
+
+### Alert Check (test locally)
+
+```bash
+export DATABASE_URL="your-connection-string"
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+export BUDGET_WARNING_THRESHOLD="0.80"
+export BUDGET_CRITICAL_THRESHOLD="1.00"
+export SPIKE_MULTIPLIER="2.0"
+
+python scripts/alert_check.py
+```
 
 ---
 
-## Grafana dashboards
+## GitHub Actions Workflows
 
-| Dashboard | Key panels |
+| Workflow | File | Trigger | Duration |
+|---|---|---|---|
+| FinOps Collector | `collector.yml` | Daily 06:00 UTC + manual | ~4 min |
+| Deploy Dashboard | `dashboard-deploy.yml` | Push to `dashboard/**` + manual | ~6 min |
+| FinOps Cost Alerts | `finops-alerts.yml` | Every 6h + manual | ~2 min |
+
+---
+
+## PostgreSQL Schema
+
+Key table: `cost_records`
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | SERIAL | Auto-increment PK |
+| `usage_date` | DATE | Date cost was incurred *(column is `usage_date`, not `date`)* |
+| `subscription_id` | VARCHAR | Azure subscription GUID |
+| `subscription_name` | VARCHAR | Subscription display name |
+| `resource_group` | VARCHAR | Resource group name |
+| `service_name` | VARCHAR | Azure service (PostgreSQL, ACR, etc.) |
+| `cost_usd` | NUMERIC(12,6) | Cost in USD *(returns `decimal.Decimal` in Python — cast to `float()`)* |
+| `team` | VARCHAR | `team` resource tag |
+| `environment` | VARCHAR | `environment` resource tag |
+| `owner` | VARCHAR | `owner` resource tag |
+| `collected_at` | TIMESTAMPTZ | When this record was inserted |
+
+---
+
+## Troubleshooting
+
+### OIDC authentication fails — subject claim mismatch
+```
+AADSTS700213: No matching federated identity record found
+```
+**Fix:** Check that the GitHub Actions job declares `environment: app` and that the federated credential on the app registration matches:
+```bash
+az ad app federated-credential list \
+  --id <your-client-id> \
+  --query "[].{Subject:subject}" -o table
+```
+Add missing credential:
+```bash
+az ad app federated-credential create \
+  --id <your-client-id> \
+  --parameters '{
+    "name": "github-actions-deploy-app",
+    "issuer": "https://token.actions.githubusercontent.com",
+    "subject": "repo:YourOrg/azure-finops-dashboard:environment:app",
+    "audiences": ["api://AzureADTokenExchange"]
+  }'
+```
+
+### Database URL hostname error (`ENOTFOUND base`)
+The `DATABASE_URL` contains special characters that break URL parsing.  
+Percent-encode the password: `#` → `%23`, `&` → `%26`, `%` → `%25`, `[` → `%5B`
+
+### `column "date" does not exist`
+The actual column name is `usage_date`. Query the schema:
+```bash
+python -c "
+import psycopg2, os
+conn = psycopg2.connect(os.environ['DATABASE_URL'])
+cur = conn.cursor()
+cur.execute(\"SELECT column_name FROM information_schema.columns WHERE table_name='cost_records'\")
+for row in cur.fetchall(): print(row[0])
+"
+```
+
+### `TypeError: unsupported operand type(s) for /: 'decimal.Decimal' and 'float'`
+Cast PostgreSQL NUMERIC values: `utilisation = float(mtd_cost) / budget`
+
+### App Service quota = 0 in region
+Personal tenants often have zero App Service quota. Options:
+- Open a Microsoft support ticket for quota increase
+- Switch to a Pay-as-you-go subscription (quota available by default)
+- Try a different region
+
+### Key Vault takes 10+ minutes to destroy
+This is normal — Azure Key Vault uses soft-delete with a 7-day retention period. The terraform destroy will wait. After destroy, purge to free the name:
+```bash
+az keyvault purge --name finopskvalidev --location eastus2
+```
+
+---
+
+## Teardown — Complete Shutdown
+
+To stop all costs and remove all Azure resources:
+
+### 1. Stop App Service
+```bash
+az webapp stop \
+  --name finops-dashboard-app \
+  --resource-group finops-app-rg \
+  --subscription <app-subscription-id>
+```
+
+### 2. Disable GitHub Actions Workflows
+GitHub → repository → Actions → each workflow → ⋯ → Disable workflow
+
+### 3. Terraform Destroy
+```bash
+cd terraform
+terraform destroy -var-file=terraform.tfvars
+# Type 'yes' when prompted — takes ~15 minutes
+```
+
+### 4. Manual Cleanup via Portal
+Items that may need manual deletion (if CLI fails with AuthorizationFailed):
+- Role assignments on dev/infra subscriptions → Portal IAM → delete `finops-github-actions`
+- `finops-tfstate-rg` resource group → Portal → Resource groups → Delete
+
+### 5. Verify Clean
+```bash
+az group list --subscription <poc-sub> --query '[].name' -o table
+az group list --subscription <app-sub> --query '[].name' -o table
+az ad app list --display-name 'finops-github-actions' --query '[].displayName' -o table
+# All should return empty / no finops resources
+```
+
+---
+
+## Cost to Run
+
+| Resource | Monthly Cost |
 |---|---|
-| **FinOps Overview** | Total MTD, cost by service pie, daily trend, cost by team |
-| **Budget Burn Rate** | Utilisation gauges (19.2%, 0.02%), MTD progress, by subscription |
-| **Cost by Team** | Team table, bar chart, daily trend, highest cost service |
-| **Anomaly Detection** | Spend vs 7-day average, collector health, records count |
+| PostgreSQL B1ms (idle when not collecting) | ~$3-8 |
+| Container Registry Basic | ~$5 |
+| App Service B1 | ~$13 |
+| Key Vault + Storage | ~$0.02 |
+| GitHub Actions | $0 (free tier) |
+| **Total** | **~$21-26/month** |
 
 ---
 
-## Live data
+## Project Phases
 
-```
-Total MTD Spend:       $0.958
-Projected Month-End:   $1.414
-
-Top services:
-  Container Registry    $0.505  52.8%
-  PostgreSQL            $0.452  47.2%
-
-Budget status:
-  finops-rg-dev    19.2% of $5.00  On track
-  finops-tfstate-rg  0.0% of $1.00  On track
-```
-
----
-
-## Roadmap
-
-- [x] Phase 1 — Terraform infrastructure
-- [x] Phase 2 — Python collector + GitHub Actions
-- [x] Phase 3 — Grafana dashboards
-- [x] Phase 4 — Next.js stakeholder dashboard
-- [ ] Phase 5 — Full Azure deployment + Alerting
-- [ ] Phase 6 — Blog post + portfolio card + Word doc
-
----
-
-## Documentation
-
-[Architecture](docs/architecture.md) · [Setup Guide](docs/setup-guide.md) · [Collector](docs/collector.md) · [Dashboards](docs/dashboards.md) · [Alerts](docs/alerts.md) · [API Reference](docs/api-reference.md) · [Terraform](docs/terraform.md) · [Runbook](docs/runbook.md)
+| Phase | Description | Status |
+|---|---|---|
+| Phase 1 | Terraform infrastructure (PostgreSQL, Key Vault, ACR, App Service, OIDC) | ✅ Complete |
+| Phase 2 | Python collector + GitHub Actions daily workflow | ✅ Complete |
+| Phase 3 | Grafana dashboards (overview, budget, teams, anomaly) | ✅ Complete |
+| Phase 4 | Next.js stakeholder dashboard | ✅ Complete |
+| Phase 5A | Azure App Service deployment via GitHub Actions OIDC | ✅ Complete |
+| Phase 5B | Slack alerting via GitHub Actions (budget, spike, health) | ✅ Complete |
+| Phase 6 | Blog post, portfolio card, Word documentation | ✅ Complete |
 
 ---
 
 ## Author
 
-**Syed Muhammad Ali Haidry** · Senior DevOps Engineer  
-[alihaidry-devops.website](https://alihaidry-devops.website) · [GitHub](https://github.com/AliHaidry) · [LinkedIn](https://www.linkedin.com/in/ali-haidry-meng-7b5ba9136/)
+**Syed Muhammad Ali Haidry** — Senior DevOps Engineer  
+🌐 [alihaidry-devops.website](https://alihaidry-devops.website)  
+💼 [LinkedIn](https://linkedin.com/in/alihaidry)  
+🐦 [@AliHaidry5](https://twitter.com/AliHaidry5)  
+📁 [GitHub](https://github.com/AliHaidry)
+
+---
+
+*Azure FinOps Dashboard — Built May 2026*
