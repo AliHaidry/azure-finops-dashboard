@@ -26,6 +26,15 @@ resource "azuread_application_federated_identity_credential" "github_pr" {
   subject        = "repo:${var.github_org}/${var.github_repo}:pull_request"
 }
 
+resource "azuread_application_federated_identity_credential" "github_deploy_app" {
+  application_id = azuread_application.github_actions.id
+  display_name   = "github-actions-deploy-app"
+  description    = "GitHub Actions dashboard workflow deploying to the app subscription"
+  audiences      = ["api://AzureADTokenExchange"]
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:${var.github_org}/${var.github_repo}:environment:app"
+}
+
 # ACR Push — GitHub Actions can push collector Docker image
 resource "azurerm_role_assignment" "github_acr_push" {
   scope                = var.acr_id
